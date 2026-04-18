@@ -59,6 +59,24 @@ def component_score(
     return mean_response * 4.0 + area * 0.03 + max_response * 0.2 + elongated_bonus
 
 
+def expand_bbox(
+    bbox: BBox,
+    image_shape: Tuple[int, int],
+    pad_left: int = 0,
+    pad_top: int = 0,
+    pad_right: int = 0,
+    pad_bottom: int = 0,
+) -> BBox:
+    x, y, w, h = bbox
+    height, width = image_shape
+
+    x1 = max(0, x - pad_left)
+    y1 = max(0, y - pad_top)
+    x2 = min(width, x + w + pad_right)
+    y2 = min(height, y + h + pad_bottom)
+    return x1, y1, x2 - x1, y2 - y1
+
+
 def extract_best_component(
     mask: np.ndarray,
     score_map: Optional[np.ndarray] = None,
@@ -122,8 +140,8 @@ def detect_by_reference_tophat(
     threshold_value, binary = cv2.threshold(
         score_map, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
     )
-    if threshold_value < 15:
-        _, binary = cv2.threshold(score_map, 15, 255, cv2.THRESH_BINARY)
+    if threshold_value < 13:
+        _, binary = cv2.threshold(score_map, 13, 255, cv2.THRESH_BINARY)
 
     open_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
@@ -198,11 +216,23 @@ def draw_detection(
 ) -> np.ndarray:
     result = defect_bgr.copy()
     overlay = result.copy()
-    overlay[mask > 0] = (0, 255, 0)
+    display_mask = cv2.dilate(
+        mask,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)),
+        iterations=1,
+    )
+    overlay[display_mask > 0] = (0, 255, 0)
     result = cv2.addWeighted(overlay, 0.25, result, 0.75, 0)
 
     if bbox is not None:
-        x, y, w, h = bbox
+        x, y, w, h = expand_bbox(
+            bbox,
+            defect_bgr.shape[:2],
+            pad_left=4,
+            pad_top=10,
+            pad_right=4,
+            pad_bottom=4,
+        )
         cv2.rectangle(result, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
     cv2.putText(
